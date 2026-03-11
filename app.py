@@ -25,10 +25,9 @@ def normalizar_nombre(texto):
     )
     return texto
 
-st.title("📊 Comparador de Bases de Datos")
+st.title("📊 Comparador de Bases de Datos con Índice")
 st.markdown("""
-Esta herramienta compara dos archivos (Inicio y Fin) para identificar quiénes completaron ambas encuestas.
-La comparación es **inteligente**: no distingue entre mayúsculas, minúsculas o tildes.
+Esta herramienta identifica quiénes completaron ambas encuestas y te indica **en qué fila del archivo original** se encuentra cada persona.
 """)
 
 # Layout para subir archivos
@@ -76,14 +75,17 @@ if file_inicio and file_fin:
         df_i_work = df_i.copy()
         df_f_work = df_f.copy()
 
+        # Capturar el número de fila original (Excel: índice + 2, asumiendo encabezado en fila 1)
+        df_i_work['fila_origen'] = df_i_work.index + 2
+
         # Generar llave de comparación limpia
         df_i_work['key_clean'] = df_i_work[col_nombre_i].astype(str).apply(normalizar_nombre)
         df_f_work['key_clean'] = df_f_work[col_nombre_f].astype(str).apply(normalizar_nombre)
 
         # Realizar el cruce (Inner Join)
-        # Esto encuentra los que están en AMBOS archivos
+        # Incluimos 'fila_origen' en la selección de columnas de la izquierda
         coincidencias = pd.merge(
-            df_i_work[[col_nombre_i, 'key_clean']], 
+            df_i_work[[col_nombre_i, 'key_clean', 'fila_origen']], 
             df_f_work[['key_clean']], 
             on='key_clean', 
             how='inner'
@@ -95,25 +97,27 @@ if file_inicio and file_fin:
             st.balloons()
             st.success(f"¡Se encontraron {len(coincidencias)} personas que realizaron ambas encuestas!")
             
-            # Crear DataFrame final limpio para evitar el KeyError
-            # Usamos el nombre original tal cual aparecía en el primer archivo
+            # Crear DataFrame final ordenado y limpio
             df_final = pd.DataFrame()
+            df_final["Fila en Origen (Excel)"] = coincidencias['fila_origen'].values
             df_final["Nombre Completo"] = coincidencias[col_nombre_i].values
             
-            st.subheader("Lista de personas identificadas:")
-            st.dataframe(df_final, use_container_width=True)
+            # Ordenar por fila para facilitar la revisión
+            df_final = df_final.sort_values(by="Fila en Origen (Excel)")
+            
+            st.subheader("Resultados de la comparación:")
+            st.dataframe(df_final, use_container_width=True, hide_index=True)
             
             # Botón de descarga con codificación para Excel
-            # utf-8-sig permite que Excel abra el archivo y reconozca las tildes de inmediato
             csv_output = df_final.to_csv(index=False).encode('utf-8-sig')
             
             st.download_button(
-                label="📥 Descargar Lista Final (CSV para Excel)",
+                label="📥 Descargar Reporte con Filas (CSV)",
                 data=csv_output,
-                file_name="participantes_exitosos.csv",
+                file_name="coincidencias_con_indices.csv",
                 mime="text/csv"
             )
         else:
-            st.warning("No se encontraron coincidencias. Por favor, verifica que las columnas seleccionadas contienen los nombres de los participantes.")
+            st.warning("No se encontraron coincidencias. Verifica las columnas seleccionadas.")
 else:
-    st.info("💡 Sube ambos archivos (Excel o CSV) para habilitar la herramienta de comparación.")
+    st.info("💡 Sube ambos archivos para habilitar la herramienta de comparación.")
