@@ -25,7 +25,7 @@ def normalizar_nombre(texto):
     )
     return texto
 
-st.title("📊 Comparador de Participantes (Nombre y Apellido)")
+st.title("📊 Comparador de base de datos")
 st.markdown("""
 Esta herramienta identifica quiénes completaron ambas encuestas uniendo las columnas que selecciones (como Nombre y Apellido).
 """)
