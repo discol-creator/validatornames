@@ -25,9 +25,9 @@ def normalizar_nombre(texto):
     )
     return texto
 
-st.title("📊 Comparador de Bases de Datos con Índice")
+st.title("📊 Comparador de Participantes (Nombre y Apellido)")
 st.markdown("""
-Esta herramienta identifica quiénes completaron ambas encuestas y te indica **en qué fila del archivo original** se encuentra cada persona.
+Esta herramienta identifica quiénes completaron ambas encuestas uniendo las columnas que selecciones (como Nombre y Apellido).
 """)
 
 # Layout para subir archivos
@@ -62,62 +62,70 @@ if file_inicio and file_fin:
     st.divider()
     
     # Selección de columnas para comparar
-    st.subheader("Configuración de columnas")
+    st.subheader("Configuración de Identidad")
+    st.info("Selecciona las columnas que forman el nombre completo (ej: Nombre y luego Apellido). El orden en que las selecciones es como aparecerán.")
+    
     c1, c2 = st.columns(2)
     
     with c1:
-        col_nombre_i = st.selectbox("Columna de Nombre en archivo Inicio", df_i.columns)
+        cols_i = st.multiselect("Columnas de Identidad (Inicio)", df_i.columns, help="Selecciona 'Nombre' y 'Apellido'")
     with c2:
-        col_nombre_f = st.selectbox("Columna de Nombre en archivo Fin", df_f.columns)
+        cols_f = st.multiselect("Columnas de Identidad (Fin)", df_f.columns, help="Selecciona 'Nombre' y 'Apellido'")
 
     if st.button("🔍 Iniciar Comparación"):
-        # Crear copias para no alterar los datos originales
-        df_i_work = df_i.copy()
-        df_f_work = df_f.copy()
-
-        # Capturar el número de fila original (Excel: índice + 2, asumiendo encabezado en fila 1)
-        df_i_work['fila_origen'] = df_i_work.index + 2
-
-        # Generar llave de comparación limpia
-        df_i_work['key_clean'] = df_i_work[col_nombre_i].astype(str).apply(normalizar_nombre)
-        df_f_work['key_clean'] = df_f_work[col_nombre_f].astype(str).apply(normalizar_nombre)
-
-        # Realizar el cruce (Inner Join)
-        # Incluimos 'fila_origen' en la selección de columnas de la izquierda
-        coincidencias = pd.merge(
-            df_i_work[[col_nombre_i, 'key_clean', 'fila_origen']], 
-            df_f_work[['key_clean']], 
-            on='key_clean', 
-            how='inner'
-        ).drop_duplicates(subset=['key_clean'])
-
-        # Mostrar resultados
-        st.divider()
-        if not coincidencias.empty:
-            st.balloons()
-            st.success(f"¡Se encontraron {len(coincidencias)} personas que realizaron ambas encuestas!")
-            
-            # Crear DataFrame final ordenado y limpio
-            df_final = pd.DataFrame()
-            df_final["Fila en Origen (Excel)"] = coincidencias['fila_origen'].values
-            df_final["Nombre Completo"] = coincidencias[col_nombre_i].values
-            
-            # Ordenar por fila para facilitar la revisión
-            df_final = df_final.sort_values(by="Fila en Origen (Excel)")
-            
-            st.subheader("Resultados de la comparación:")
-            st.dataframe(df_final, use_container_width=True, hide_index=True)
-            
-            # Botón de descarga con codificación para Excel
-            csv_output = df_final.to_csv(index=False).encode('utf-8-sig')
-            
-            st.download_button(
-                label="📥 Descargar Reporte con Filas (CSV)",
-                data=csv_output,
-                file_name="coincidencias_con_indices.csv",
-                mime="text/csv"
-            )
+        if not cols_i or not cols_f:
+            st.warning("Por favor, selecciona al menos una columna en cada archivo para identificar a las personas.")
         else:
-            st.warning("No se encontraron coincidencias. Verifica las columnas seleccionadas.")
+            # Crear copias para no alterar los datos originales
+            df_i_work = df_i.copy()
+            df_f_work = df_f.copy()
+
+            # Capturar el número de fila original (Excel: índice + 2)
+            df_i_work['fila_origen'] = df_i_work.index + 2
+
+            # Combinar las columnas seleccionadas en una sola cadena de texto
+            # Ejemplo: "Juan" + " " + "Perez" -> "Juan Perez"
+            df_i_work['full_name_display'] = df_i_work[cols_i].astype(str).agg(' '.join, axis=1)
+            df_f_work['full_name_display'] = df_f_work[cols_f].astype(str).agg(' '.join, axis=1)
+
+            # Generar llave de comparación limpia basada en el nombre completo unido
+            df_i_work['key_clean'] = df_i_work['full_name_display'].apply(normalizar_nombre)
+            df_f_work['key_clean'] = df_f_work['full_name_display'].apply(normalizar_nombre)
+
+            # Realizar el cruce (Inner Join)
+            coincidencias = pd.merge(
+                df_i_work[['full_name_display', 'key_clean', 'fila_origen']], 
+                df_f_work[['key_clean']], 
+                on='key_clean', 
+                how='inner'
+            ).drop_duplicates(subset=['key_clean'])
+
+            # Mostrar resultados
+            st.divider()
+            if not coincidencias.empty:
+                st.balloons()
+                st.success(f"¡Se encontraron {len(coincidencias)} personas que realizaron ambas encuestas!")
+                
+                # Crear DataFrame final ordenado
+                df_final = pd.DataFrame()
+                df_final["Fila en Origen (Excel)"] = coincidencias['fila_origen'].values
+                df_final["Participante (Nombre y Apellido)"] = coincidencias['full_name_display'].values
+                
+                # Ordenar por fila
+                df_final = df_final.sort_values(by="Fila en Origen (Excel)")
+                
+                st.subheader("Resultados de la comparación:")
+                st.dataframe(df_final, use_container_width=True, hide_index=True)
+                
+                # Botón de descarga
+                csv_output = df_final.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label="📥 Descargar Reporte Completo (CSV)",
+                    data=csv_output,
+                    file_name="coincidencias_completas.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.warning("No se encontraron coincidencias. Asegúrate de haber seleccionado las columnas equivalentes en ambos archivos.")
 else:
-    st.info("💡 Sube ambos archivos para habilitar la herramienta de comparación.")
+    st.info("💡 Sube ambos archivos para configurar las columnas de Nombre y Apellido.")
